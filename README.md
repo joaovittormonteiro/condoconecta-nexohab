@@ -26,10 +26,10 @@ Criado pela empresa fictícia **NexoHab Tecnologia** como parte de uma atividade
 | Integrante | Papel |
 | --- | --- |
 | Luis Gustavo | Full Stack, Back-end e Product Owner |
-| João Vittor Monteiro | Front-end — comunicados e manutenção |
-| João Vitor Simões | Front-end — reservas, ocorrências e painel |
-| João Gabriel Camara | Back-end — comunicados e manutenção |
-| João Carlos | Back-end — reservas e ocorrências |
+| João Vittor Monteiro | Front-end e Product Owner  |
+| João Vitor Simões | Front-end |
+| João Gabriel Camara | Back-end |
+| João Carlos | Back-end |
 
 ## Documentação da atividade
 
