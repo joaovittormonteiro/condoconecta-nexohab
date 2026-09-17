@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+
+const base = process.env.TEST_URL || 'http://127.0.0.1:5173';
+if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw Error('Integration tests run only on a local development instance.');
+const signIn=await fetch(base+'/signin-with-chatgpt?return_to=/',{redirect:'manual'});
+const cookie=signIn.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ');
+assert.ok(cookie,'Local sign-in cookie is required.');
+const run='Teste '+Date.now();
+let checks=0;
+function check(value,message){assert.ok(value,message);checks++;console.log('PASS '+message)}
+async function api(profile,method='GET',payload,extra={}){
+ const r=await fetch(base+'/api/condo',{method,headers:{Cookie:cookie,'x-demo-profile':profile,'Content-Type':'application/json',Origin:base,...extra},...(payload?{body:JSON.stringify(payload)}:{})});
+ const text=await r.text();let data;try{data=JSON.parse(text)}catch{data={error:text}}return {status:r.status,...data};
+}
+const anonymous=await fetch(base+'/api/condo');check(anonymous.status===401,'anonymous access denied');
+let data=await api('admin');check(data.status===200&&Array.isArray(data.entries),'authenticated data loads');
+check((await api('invalid')).status===400,'unknown persona denied');
+const input={kind:'maintenance',title:run+' manutenção',description:'Descrição fictícia para validar o fluxo.',category:'Elétrica',location:'Área de teste',priority:'Normal'};
+let r=await api('resident','POST',input);check(r.status===201,'resident creates maintenance request');let entry=r.entry;
+check((await api('resident')).entries.some(e=>e.id===entry.id),'created record persists on a fresh read');
+check(!(await api('resident2')).entries.some(e=>e.id===entry.id),'another resident cannot read the request');
+check((await api('resident2','PATCH',{id:entry.id,version:entry.version,note:'Acesso indevido.'})).status===404,'another resident cannot update the request');
+check((await api('resident','PATCH',{id:entry.id,version:entry.version,status:'completed',note:'Tentativa de concluir.'})).status===403,'resident cannot complete maintenance');
+check((await api('employee')).entries.every(e=>e.id!==entry.id),'employee cannot see an unassigned request');
+r=await api('admin','PATCH',{id:entry.id,version:entry.version,status:'triage',assigned:'employee',note:'Triagem e atribuição ao responsável.'});check(r.status===200,'manager triages and assigns request');entry=r.entry;
+check((await api('employee')).entries.some(e=>e.id===entry.id),'assigned employee can read request');
+r=await api('employee','PATCH',{id:entry.id,version:entry.version,status:'progress',note:'Atendimento iniciado.'});check(r.status===200,'employee starts assigned maintenance');entry=r.entry;
+check((await api('admin','PATCH',{id:entry.id,version:0,note:'Mensagem desatualizada.'})).status===409,'stale update rejected');
+r=await api('employee','PATCH',{id:entry.id,version:entry.version,status:'completed',note:'Manutenção concluída no teste.'});check(r.status===200&&r.entry.history.length===4,'completion keeps full history');
+const notice={kind:'notice',title:run+' comunicado',description:'Aviso fictício do teste de integração.',category:'Administração'};
+check((await api('resident','POST',notice)).status===403,'resident cannot publish announcements');
+r=await api('admin','POST',notice);check(r.status===201,'manager publishes announcement');
+await api('admin','PATCH',{id:r.entry.id,version:0,status:'archived',note:'Teste encerrado.'});
+check(!(await api('resident')).entries.some(e=>e.id===r.entry.id),'archived announcement hidden from resident');
+r=await api('resident','POST',{...input,kind:'incident',category:'Convivência',title:run+' ocorrência'});check(r.status===201,'resident creates incident');entry=r.entry;
+r=await api('admin','PATCH',{id:entry.id,version:entry.version,note:'Nota restrita de teste.',internal:true});check(r.status===200,'manager adds internal note');entry=r.entry;
+check(!(await api('resident')).entries.find(e=>e.id===entry.id).history.some(h=>h.internal),'internal notes excluded from resident response');
+check(!(await api('employee')).entries.some(e=>e.id===entry.id),'incident hidden from employee');
+const d=new Date();d.setUTCDate(d.getUTCDate()+40);const day=d.toISOString().slice(0,10);
+const booking={kind:'booking',title:run+' reserva',description:'Reserva fictícia para teste de simultaneidade.',category:'Reserva',area:'Quadra esportiva',day,start:8,end:10};
+const pair=await Promise.all([api('resident','POST',booking),api('resident2','POST',booking)]);
+check(pair.filter(r=>r.status===201).length===1&&pair.filter(r=>r.status===409).length===1,'simultaneous overlap yields exactly one successful booking');
+const winner=pair.find(r=>r.status===201).entry;
+const other=winner.author==='resident'?'resident2':'resident';
+const masked=(await api(other)).entries.find(e=>e.id===winner.id);
+check(masked.masked&&masked.description===''&&masked.author===''&&masked.history.length===0,'other resident sees occupied time without personal details');
+check((await api(other,'PATCH',{id:winner.id,version:0,status:'cancelled',note:'Tentativa indevida.'})).status===404,'cannot cancel another resident booking');
+r=await api(winner.author,'PATCH',{id:winner.id,version:0,status:'cancelled',note:'Cancelar a reserva de teste.'});check(r.status===200,'owner can cancel own reservation');
+r=await api(other,'POST',booking);check(r.status===201,'cancelled slot is available again');
+await api(other,'PATCH',{id:r.entry.id,version:0,status:'cancelled',note:'Finalização do teste.'});
+check((await api('resident','POST',{...booking,day:'2026-02-30'})).status===400,'impossible date rejected');
+check((await api('resident','POST',{...booking,start:12,end:10})).status===400,'invalid time interval rejected');
+check((await api('resident','POST',{...input,title:'a'})).status===400,'incomplete form rejected');
+check((await api('resident','POST',input,{Origin:'https://other.invalid'})).status===403,'cross-origin mutation denied');
+console.log('\n'+checks+' integration checks passed. Test-only records remain in the local database; active test reservations were cancelled.');

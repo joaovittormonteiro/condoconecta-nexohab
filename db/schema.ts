@@ -1,0 +1,6 @@
+import {sqliteTable,text,integer,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+export const workspaces=sqliteTable('workspaces',{owner:text('owner').primaryKey(),created:text('created').notNull()});
+export const entries=sqliteTable('entries',{
+ id:text('id').primaryKey(),tenant:text('tenant').notNull(),kind:text('kind').notNull(),title:text('title').notNull(),description:text('description').notNull(),category:text('category').notNull(),location:text('location').notNull(),status:text('status').notNull(),priority:text('priority').notNull(),author:text('author').notNull(),assigned:text('assigned').notNull(),day:text('day').notNull(),start:integer('start').notNull(),end:integer('end').notNull(),area:text('area').notNull(),created:text('created').notNull(),updated:text('updated').notNull(),history:text('history').notNull(),version:integer('version').notNull().default(0)
+},t=>[index('idx_entries_tenant_kind').on(t.tenant,t.kind)]);
+export const slots=sqliteTable('slots',{id:integer('id').primaryKey({autoIncrement:true}),tenant:text('tenant').notNull(),area:text('area').notNull(),day:text('day').notNull(),hour:integer('hour').notNull(),entryId:text('entry_id').notNull().references(()=>entries.id)},t=>[uniqueIndex('unique_area_hour').on(t.tenant,t.area,t.day,t.hour),index('idx_slots_entry').on(t.entryId)]);
