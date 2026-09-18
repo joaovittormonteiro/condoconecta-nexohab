@@ -30,6 +30,7 @@ Criado pela empresa fictícia **NexoHab Tecnologia** como parte de uma atividade
 | João Vitor Simões | Front-end |
 | João Gabriel Camara | Back-end |
 | João Carlos | Back-end |
+| Gabriel Cirnei | Back-end | QA |
 
 ## Documentação da atividade
 
